@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>年宵 POS 系統 (自訂版)</title>
+    <style>
+        :root {
+            --primary-color: #d32f2f; /* 年宵紅 */
+            --bg-color: #f5f5f5;
+            --text-color: #333;
+            --card-bg: #fff;
+            --confirm-green: #4caf50;
+        }
+
+        body {
+            font-family: "Microsoft JhengHei", "PingFang TC", sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- 頂部管理區 --- */
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .admin-panel { display: flex; gap: 10px; }
+        input { padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 16px; }
+        button { cursor: pointer; border: none; border-radius: 4px; padding: 8px 16px; font-size: 14px; transition: 0.2s; }
+        .btn-add { background-color: #ffeb3b; color: #333; font-weight: bold; }
+        .btn-add:hover { background-color: #fdd835; }
+
+        /* --- 主介面佈局 --- */
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* 左側：商品區 */
+        .product-section {
+            flex: 2;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid #ddd;
+        }
+        
+        /* 空白時的提示文字 */
+        .empty-hint {
+            text-align: center;
+            color: #999;
+            margin-top: 50px;
+            font-size: 1.2em;
+        }
+
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 15px;
+        }
+
+        .product-card {
+            background: var(--card-bg);
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.1s;
+            height: 100px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            user-select: none;
+            position: relative;
+        }
+        .product-card:active { transform: scale(0.95); }
+        .prod-name { font-size: 1.1em; font-weight: bold; margin-bottom: 5px; }
+        .prod-price { color: var(--primary-color); font-size: 1.2em; }
+        
+        /* 刪除商品的小按鈕 */
+        .delete-prod-btn {
+            position: absolute; top: 5px; right: 5px; background: none; border: none; color: #ccc; font-size: 12px;
+            display: none;
+        }
+        .product-card:hover .delete-prod-btn { display: block; }
+        .delete-prod-btn:hover { color: red; }
+
+        /* 右側：購物車區 */
+        .cart-section {
+            flex: 1;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.05);
+            min-width: 350px;
+        }
+
+        .cart-items { flex: 1; overflow-y: auto; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; border-bottom: 2px solid #eee; padding: 5px; color: #666; }
+        td { padding: 8px 5px; border-bottom: 1px solid #eee; }
+        
+        .btn-remove { background: #ffcdd2; color: #c62828; padding: 4px 8px; font-size: 12px; }
+
+        .cart-summary { border-top: 2px solid #eee; padding-top: 15px; }
+        .total-price { font-size: 2em; font-weight: bold; color: var(--primary-color); text-align: right; margin-bottom: 15px; }
+
+        .action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn-checkout {
+            grid-column: span 2;
+            background-color: var(--confirm-green);
+            color: white;
+            font-size: 1.5em;
+            padding: 15px;
+        }
+        .btn-checkout:hover { background-color: #43a047; }
+        .btn-clear { background-color: #ef5350; color: white; }
+        .btn-report { background-color: #2196f3; color: white; }
+
+        /* --- 支付方式彈窗 (Modal) --- */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: 450px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .modal-header { font-size: 1.5em; margin-bottom: 15px; font-weight: bold; }
+        .modal-total { font-size: 2.8em; color: var(--primary-color); font-weight: bold; margin: 10px 0 20px 0; }
+        
+        .pay-btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .pay-btn {
+            font-size: 1.2em; padding: 15px; border-radius: 8px; color: white; font-weight: bold; display: flex; align-items: center; justify-content: center;
+        }
+        
+        .btn-cash { background-color: var(--confirm-green); grid-column: span 2; font-size: 1.4em; } 
+        .btn-payme { background-color: #D91A3C; }
+        .btn-alipay { background-color: #1677FF; }
+        .btn-fps { background-color: #00A86B; }
+        .btn-cancel { background-color: #999; grid-column: span 2; margin-top: 10px; }
+
+        /* --- 現金找贖介面 --- */
+        #cash-interface { display: none; text-align: left; }
+        .cash-row { margin-bottom: 15px; }
+        .cash-label { font-size: 1.1em; color: #555; display: block; margin-bottom: 5px; }
+        .cash-input { 
+            width: 100%; padding: 10px; font-size: 1.5em; border: 2px solid #ccc; border-radius: 6px; box-sizing: border-box; 
+        }
+        .cash-input:focus { border-color: var(--primary-color); outline: none; }
+        
+        .quick-cash-btns { display: flex; gap: 10px; margin-bottom: 15px; }
+        .q-btn { flex: 1; background: #e0e0e0; color: #333; font-weight: bold; padding: 10px; border-radius: 4px; }
+        .q-btn:hover { background: #d0d0d0; }
+
+        .change-display { 
+            font-size: 2em; font-weight: bold; color: var(--primary-color); text-align: right; margin-top: 10px; 
+            background: #ffebee; padding: 10px; border-radius: 6px;
+        }
+
+        .cash-actions { display: flex; gap: 10px; margin-top: 20px; }
+        .btn-back { background: #999; color: white; flex: 1; }
+        .btn-confirm-cash { background: var(--confirm-green); color: white; flex: 2; font-size: 1.2em; font-weight: bold;}
+        .btn-confirm-cash:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* --- 列印/PDF 樣式 --- */
+        #print-area { display: none; }
+        @media print {
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
+            #print-area { display: block; position: absolute; left: 0; top: 0; width: 100%; padding: 20px; }
+            .print-section { margin-bottom: 30px; }
+            table { width: 100%; border: 1px solid #000; border-collapse: collapse; }
+            th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+            h1, h2 { text-align: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div style="font-size: 1.2em; font-weight: bold;">🧧 年宵 POS 系統</div>
+        <div class="admin-panel">
+            <input type="text" id="newProdName" placeholder="商品名稱">
+            <input type="number" id="newProdPrice" placeholder="價格" style="width: 80px;">
+            <button class="btn-add" onclick="addProduct()">+ 新增商品</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="product-section">
+            <div class="product-grid" id="productGrid">
+                </div>
+            <div id="empty-hint" class="empty-hint">
+                👋 歡迎使用！<br>請在上方「新增商品」開始建立按鈕。
+            </div>
+        </div>
+
+        <div class="cart-section">
+            <h3>目前訂單</h3>
+            <div class="cart-items">
+                <table id="cartTable">
+                    <thead>
+                        <tr>
+                            <th>商品</th>
+                            <th width="50">數量</th>
+                            <th width="60">小計</th>
+                            <th width="40"></th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div class="cart-summary">
+                <div class="total-price" id="totalDisplay">$0.0</div>
+                <div class="action-buttons">
+                    <button class="btn-clear" onclick="clearCart()">🗑️ 清空</button>
+                    <button class="btn-report" onclick="printReport()">📄 下載報表</button>
+                    <button class="btn-checkout" onclick="openPaymentModal()">💰 結帳</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="paymentModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">應收金額</div>
+            <div class="modal-total" id="modalTotalAmount">$0.0</div>
+            
+            <div id="payment-select-interface" class="pay-btn-group">
+                <button class="pay-btn btn-cash" onclick="showCashInterface()">💵 現金 (找贖)</button>
+                <button class="pay-btn btn-payme" onclick="confirmPayment('PayMe')">PayMe</button>
+                <button class="pay-btn btn-alipay" onclick="confirmPayment('Alipay')">Alipay</button>
+                <button class="pay-btn btn-fps" onclick="confirmPayment('FPS')">FPS</button>
+                <button class="pay-btn btn-cancel" onclick="closePaymentModal()">取消</button>
+            </div>
+
+            <div id="cash-interface">
+                <div class="cash-row">
+                    <label class="cash-label">客人付款 (收錢):</label>
+                    <div class="quick-cash-btns">
+                        <button class="q-btn" onclick="addMoney(100)">+$100</button>
+                        <button class="q-btn" onclick="addMoney(500)">+$500</button>
+                        <button class="q-btn" onclick="addMoney(1000)">+$1000</button>
+                    </div>
+                    <input type="number" id="cashReceived" class="cash-input" placeholder="輸入金額" oninput="calculateChange()">
+                </div>
+                
+                <div class="cash-row">
+                    <label class="cash-label">找贖 (找錢):</label>
+                    <div class="change-display" id="changeDisplay">$0.0</div>
+                </div>
+
+                <div class="cash-actions">
+                    <button class="pay-btn btn-back" onclick="hideCashInterface()">返回</button>
+                    <button class="pay-btn btn-confirm-cash" id="btnConfirmCash" onclick="confirmCashTransaction()" disabled>確認收款</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="print-area">
+        <h1>📊 年宵銷售總結報告</h1>
+        <p id="report-date" style="text-align: center; color: #666;"></p>
+        <hr>
+        <div class="print-section">
+            <h3>1. 商品銷售統計</h3>
+            <table style="width:100%">
+                <thead><tr><th>商品名稱</th><th>總銷量</th><th>總收入 ($)</th></tr></thead>
+                <tbody id="report-products"></tbody>
+            </table>
+        </div>
+        <div class="print-section">
+            <h3>2. 收款方式統計</h3>
+            <table style="width:100%">
+                <thead><tr><th>收款方式</th><th>交易總額 ($)</th></tr></thead>
+                <tbody id="report-payments"></tbody>
+            </table>
+        </div>
+        <h2 style="text-align: right; margin-top: 20px;">全日總收入: <span id="report-grand-total">$0</span></h2>
+    </div>
+
+    <script>
+        // --- 資料設定 (已清空) ---
+        let products = []; 
+
+        let cart = []; 
+        let salesSummary = {};
+        let paymentStats = { "現金": 0, "PayMe": 0, "Alipay": 0, "FPS": 0 };
+        let currentOrderTotal = 0;
+
+        window.onload = function() { renderProducts(); };
+
+        // --- 介面渲染 ---
+        function renderProducts() {
+            const grid = document.getElementById('productGrid');
+            const hint = document.getElementById('empty-hint');
+            
+            grid.innerHTML = '';
+            
+            if (products.length === 0) {
+                hint.style.display = 'block';
+            } else {
+                hint.style.display = 'none';
+                products.forEach((prod, index) => {
+                    const btn = document.createElement('div');
+                    btn.className = 'product-card';
+                    btn.innerHTML = `
+                        <div class="prod-name">${prod.name}</div>
+                        <div class="prod-price">$${prod.price}</div>
+                        <button class="delete-prod-btn" onclick="deleteProduct(event, ${index})">❌</button>
+                    `;
+                    btn.onclick = () => addToCart(prod);
+                    grid.appendChild(btn);
+                });
+            }
+        }
+
+        function renderCart() {
+            const tbody = document.querySelector('#cartTable tbody');
+            tbody.innerHTML = '';
+            let total = 0;
+            cart.forEach((item, index) => {
+                const subtotal = item.price * item.qty;
+                total += subtotal;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${item.name}</td><td>${item.qty}</td><td>$${subtotal}</td>
+                                <td><button class="btn-remove" onclick="removeFromCart(${index})">X</button></td>`;
+                tbody.appendChild(tr);
+            });
+            currentOrderTotal = total;
+            document.getElementById('totalDisplay').textContent = `$${total.toFixed(1)}`;
+        }
+
+        // --- 商品管理邏輯 ---
+        function addProduct() {
+            const name = document.getElementById('newProdName').value.trim();
+            const price = parseFloat(document.getElementById('newProdPrice').value);
+            if (name && !isNaN(price)) {
+                const existing = products.find(p => p.name === name);
+                if (existing) {
+                    existing.price = price;
+                    alert(`已更新 ${name} 的價格為 $${price}`);
+                } else {
+                    products.push({ id: Date.now(), name, price });
+                }
+                renderProducts();
+                document.getElementById('newProdName').value = '';
+                document.getElementById('newProdPrice').value = '';
+            } else {
+                alert("請輸入正確的名稱和價格！");
+            }
+        }
+
+        // 新增功能：刪除設定錯誤的商品
+        function deleteProduct(event, index) {
+            event.stopPropagation(); // 防止觸發加入購物車
+            if (confirm("確定要刪除這個商品按鈕嗎？")) {
+                products.splice(index, 1);
+                renderProducts();
+            }
+        }
+
+        // --- 購物車邏輯 ---
+        function addToCart(product) {
+            const existingItem = cart.find(item => item.name === product.name);
+            if (existingItem) existingItem.qty++;
+            else cart.push({ ...product, qty: 1 });
+            renderCart();
+        }
+
+        function removeFromCart(index) {
+            cart.splice(index, 1);
+            renderCart();
+        }
+
+        function clearCart() {
+            cart = [];
+            renderCart();
+        }
+
+        // --- 支付與找贖流程 ---
+        function openPaymentModal() {
+            if (cart.length === 0) { alert("購物車是空的！"); return; }
+            document.getElementById('modalTotalAmount').textContent = `$${currentOrderTotal.toFixed(1)}`;
+            
+            document.getElementById('payment-select-interface').style.display = 'grid';
+            document.getElementById('cash-interface').style.display = 'none';
+            document.getElementById('cashReceived').value = '';
+            document.getElementById('changeDisplay').textContent = '$0.0';
+            document.getElementById('btnConfirmCash').disabled = true;
+
+            document.getElementById('paymentModal').style.display = 'flex';
+        }
+
+        function closePaymentModal() {
+            document.getElementById('paymentModal').style.display = 'none';
+        }
+
+        function showCashInterface() {
+            document.getElementById('payment-select-interface').style.display = 'none';
+            document.getElementById('cash-interface').style.display = 'block';
+            document.getElementById('cashReceived').focus(); 
+        }
+
+        function hideCashInterface() {
+            document.getElementById('payment-select-interface').style.display = 'grid';
+            document.getElementById('cash-interface').style.display = 'none';
+        }
+
+        function addMoney(amount) {
+            const input = document.getElementById('cashReceived');
+            let current = parseFloat(input.value) || 0;
+            input.value = current + amount;
+            calculateChange();
+        }
+
+        function calculateChange() {
+            const received = parseFloat(document.getElementById('cashReceived').value) || 0;
+            const change = received - currentOrderTotal;
+            const display = document.getElementById('changeDisplay');
+            const btn = document.getElementById('btnConfirmCash');
+
+            if (change >= 0) {
+                display.textContent = `$${change.toFixed(1)}`;
+                display.style.color = 'var(--primary-color)';
+                btn.disabled = false;
+            } else {
+                display.textContent = `還差 $${Math.abs(change).toFixed(1)}`;
+                display.style.color = 'red';
+                btn.disabled = true;
+            }
+        }
+
+        function confirmCashTransaction() {
+            confirmPayment('現金');
+        }
+
+        function confirmPayment(method) {
+            cart.forEach(item => {
+                if (!salesSummary[item.name]) salesSummary[item.name] = { qty: 0, total: 0 };
+                salesSummary[item.name].qty += item.qty;
+                salesSummary[item.name].total += (item.price * item.qty);
+            });
+
+            if (!paymentStats[method]) paymentStats[method] = 0;
+            paymentStats[method] += currentOrderTotal;
+
+            if (method === '現金') {
+                const received = parseFloat(document.getElementById('cashReceived').value);
+                const change = received - currentOrderTotal;
+                alert(`✅ 交易完成！\n收現: $${received}\n找贖: $${change.toFixed(1)}`);
+            } else {
+                alert(`✅ 交易完成！\n方式: ${method}\n金額: $${currentOrderTotal}`);
+            }
+
+            closePaymentModal();
+            clearCart();
+        }
+
+        // --- 報表輸出 ---
+        function printReport() {
+            const prodBody = document.getElementById('report-products');
+            const payBody = document.getElementById('report-payments');
+            prodBody.innerHTML = '';
+            payBody.innerHTML = '';
+            let grandTotal = 0;
+
+            document.getElementById('report-date').textContent = `報表產生時間: ${new Date().toLocaleString('zh-HK')}`;
+
+            for (const [name, data] of Object.entries(salesSummary)) {
+                prodBody.innerHTML += `<tr><td>${name}</td><td>${data.qty}</td><td>$${data.total.toFixed(1)}</td></tr>`;
+                grandTotal += data.total;
+            }
+
+            for (const [method, amount] of Object.entries(paymentStats)) {
+                if (amount > 0) payBody.innerHTML += `<tr><td>${method}</td><td>$${amount.toFixed(1)}</td></tr>`;
+            }
+
+            document.getElementById('report-grand-total').textContent = `$${grandTotal.toFixed(1)}`;
+            window.print();
+        }
+    </script>
+</body>
+</html>
