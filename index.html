@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>年宵 POS (直接PDF版)</title>
+    <title>年宵 POS (永久儲存版)</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -52,6 +52,7 @@
             padding: 5px 10px; border-radius: 5px; font-size: 0.9rem;
         }
 
+        /* --- 管理面板 --- */
         #admin-panel {
             display: none; 
             position: absolute;
@@ -60,10 +61,15 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             z-index: 99;
             border-bottom: 1px solid #ddd;
+            max-height: 80vh; overflow-y: auto;
         }
         .admin-row { display: flex; gap: 10px; margin-bottom: 10px; }
         .admin-row input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 1rem; }
-        .btn-add { background: #ffeb3b; color: #333; font-weight: bold; width: 100%; padding: 12px; border: none; border-radius: 5px; font-size: 1rem; }
+        .btn-add { background: #ffeb3b; color: #333; font-weight: bold; width: 100%; padding: 12px; border: none; border-radius: 5px; font-size: 1rem; margin-bottom: 15px;}
+        
+        .admin-divider { border-top: 1px solid #eee; margin: 15px 0; padding-top: 10px; }
+        .btn-reset-day { background: #ef5350; color: white; width: 100%; padding: 12px; border: none; border-radius: 5px; font-weight: bold; margin-bottom: 5px; }
+        .btn-factory-reset { background: #333; color: #999; width: 100%; padding: 10px; border: none; border-radius: 5px; font-size: 0.8rem; }
 
         /* --- 主容器 --- */
         .main-container {
@@ -228,10 +234,10 @@
         .quick-cash-btns { display: flex; gap: 8px; margin-bottom: 15px; }
         .q-btn { flex: 1; padding: 12px; background: #eee; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold;}
 
-        /* --- PDF 產生專用隱藏區 (A4 寬度比例) --- */
+        /* --- PDF 產生專用 --- */
         #pdf-source {
             position: fixed; left: -9999px; top: 0;
-            width: 790px; /* 接近 A4 寬度 */
+            width: 790px;
             background: white; padding: 40px;
             font-family: "Microsoft JhengHei", sans-serif;
             color: black;
@@ -252,16 +258,20 @@
     </header>
 
     <div id="admin-panel">
+        <h4>新增/修改商品</h4>
         <div class="admin-row">
-            <input type="text" id="newProdName" placeholder="商品名稱">
+            <input type="text" id="newProdName" placeholder="商品名稱 (如: 風車)">
         </div>
         <div class="admin-row">
             <input type="number" id="newProdPrice" placeholder="價格 ($)" inputmode="decimal">
         </div>
         <button class="btn-add" onclick="addProduct()">+ 新增 / 更新商品</button>
-        <div style="text-align: right; margin-top: 10px;">
-            <small style="color: #666;">點擊商品右上角 X 可刪除</small>
-        </div>
+        
+        <div class="admin-divider"></div>
+        <h4>資料管理</h4>
+        <p style="font-size:0.9rem; color:#666; margin-bottom:10px;">資料會自動儲存。如要開始新的一天，請按下方紅色按鈕。</p>
+        <button class="btn-reset-day" onclick="resetDailyData()">🗑️ 開始新的一天 (清除銷量)</button>
+        <button class="btn-factory-reset" onclick="hardReset()">⚠️ 回復原廠設定 (清除所有設定)</button>
     </div>
 
     <div class="main-container">
@@ -334,35 +344,74 @@
         <div class="pdf-title">年宵銷售總結報告</div>
         <div class="pdf-date" id="pdf-date-text"></div>
         <hr style="margin-bottom: 20px;">
-        
         <h3>1. 商品銷售統計</h3>
         <table class="pdf-table" id="pdf-table-prod"></table>
-        
         <h3>2. 收款方式統計</h3>
         <table class="pdf-table" id="pdf-table-pay"></table>
-        
         <h2 style="text-align: right; margin-top: 20px;">全日總收入: <span id="pdf-total"></span></h2>
     </div>
 
     <script>
-        // --- 核心邏輯 ---
+        // --- 全域變數 ---
         let products = [];
         let cart = [];
         let salesSummary = {};
         let paymentStats = { "現金": 0, "PayMe": 0, "Alipay": 0, "FPS": 0 };
         let currentOrderTotal = 0;
 
+        // --- 初始化 & 資料讀取 (LocalStorage) ---
         window.onload = function() {
-            const savedProds = localStorage.getItem('cny_products');
-            if(savedProds) products = JSON.parse(savedProds);
+            loadData();
             renderProducts();
+            renderCart();
         };
 
+        function saveData() {
+            // 儲存所有關鍵數據
+            localStorage.setItem('cny_products', JSON.stringify(products));
+            localStorage.setItem('cny_cart', JSON.stringify(cart)); // 連購物車都存，以防按到F5
+            localStorage.setItem('cny_sales_summary', JSON.stringify(salesSummary));
+            localStorage.setItem('cny_payment_stats', JSON.stringify(paymentStats));
+        }
+
+        function loadData() {
+            if(localStorage.getItem('cny_products')) products = JSON.parse(localStorage.getItem('cny_products'));
+            if(localStorage.getItem('cny_cart')) cart = JSON.parse(localStorage.getItem('cny_cart'));
+            if(localStorage.getItem('cny_sales_summary')) salesSummary = JSON.parse(localStorage.getItem('cny_sales_summary'));
+            
+            // 載入支付統計並合併，避免舊資料結構不合
+            const savedStats = JSON.parse(localStorage.getItem('cny_payment_stats'));
+            if(savedStats) {
+                paymentStats = { ...paymentStats, ...savedStats };
+            }
+        }
+
+        // --- 管理功能 ---
         function toggleAdmin() {
             const panel = document.getElementById('admin-panel');
             panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
         }
 
+        function resetDailyData() {
+            if(confirm("確定要「開始新的一天」嗎？\n\n這會清除所有今日的銷售紀錄和收款統計。\n(商品按鈕會保留)")) {
+                salesSummary = {};
+                paymentStats = { "現金": 0, "PayMe": 0, "Alipay": 0, "FPS": 0 };
+                cart = []; // 清空購物車
+                saveData();
+                renderCart();
+                alert("已清除銷量，可以開始新的一天營業了！");
+                toggleAdmin();
+            }
+        }
+
+        function hardReset() {
+            if(confirm("⚠️ 警告：這會清除所有資料！\n\n包含所有商品按鈕、所有銷售紀錄。\n回到完全空白的狀態。\n\n確定嗎？")) {
+                localStorage.clear();
+                location.reload(); // 重新整理頁面
+            }
+        }
+
+        // --- 介面操作 ---
         function toggleCartExpand() {
             if(window.innerWidth <= 768) {
                 document.getElementById('cartSection').classList.toggle('expanded');
@@ -372,6 +421,7 @@
             document.getElementById('cartSection').classList.remove('expanded');
         }
 
+        // --- 商品邏輯 ---
         function addProduct() {
             const name = document.getElementById('newProdName').value.trim();
             const price = parseFloat(document.getElementById('newProdPrice').value);
@@ -379,7 +429,8 @@
                 const exist = products.find(p => p.name === name);
                 if(exist) exist.price = price;
                 else products.push({ id: Date.now(), name, price });
-                localStorage.setItem('cny_products', JSON.stringify(products));
+                
+                saveData(); // 儲存
                 renderProducts();
                 document.getElementById('newProdName').value = '';
                 document.getElementById('newProdPrice').value = '';
@@ -391,7 +442,7 @@
             e.stopPropagation();
             if(confirm("刪除此按鈕？")) {
                 products.splice(index, 1);
-                localStorage.setItem('cny_products', JSON.stringify(products));
+                saveData(); // 儲存
                 renderProducts();
             }
         }
@@ -414,13 +465,24 @@
             }
         }
 
+        // --- 購物車邏輯 ---
         function addToCart(prod) {
             const exist = cart.find(c => c.name === prod.name);
             if(exist) exist.qty++; else cart.push({ ...prod, qty: 1 });
+            saveData(); // 儲存 (防止刷新消失)
             renderCart();
         }
-        function removeFromCart(idx) { cart.splice(idx, 1); renderCart(); }
-        function clearCart() { cart = []; renderCart(); closeCartIfOpen(); }
+        function removeFromCart(idx) { 
+            cart.splice(idx, 1); 
+            saveData(); // 儲存
+            renderCart(); 
+        }
+        function clearCart() { 
+            cart = []; 
+            saveData(); // 儲存
+            renderCart(); 
+            closeCartIfOpen(); 
+        }
 
         function renderCart() {
             const container = document.getElementById('cartItemsContainer');
@@ -486,17 +548,20 @@
                 salesSummary[i.name].t += i.price * i.qty;
             });
             paymentStats[method] += currentOrderTotal;
+            
             if(showAlert) alert(`✅ ${method} 收款成功`);
+            
+            cart = []; // 清空購物車
+            saveData(); // 交易完成後立即存檔
+            
+            renderCart();
             closePaymentModal();
-            clearCart();
         }
 
-        // --- PDF 下載邏輯 (使用 html2canvas + jsPDF) ---
+        // --- PDF 下載邏輯 ---
         async function downloadPDF() {
             const { jsPDF } = window.jspdf;
             const source = document.getElementById('pdf-source');
-            
-            // 1. 填充資料到隱藏的 PDF 區域
             document.getElementById('pdf-date-text').textContent = "報表時間: " + new Date().toLocaleString();
             
             let pHtml = `<tr><th width="50%">商品名稱</th><th>總銷量</th><th>總收入 ($)</th></tr>`;
@@ -515,38 +580,25 @@
             }
             if(Object.values(paymentStats).every(v=>v===0)) payHtml += `<tr><td colspan="2" style="text-align:center;">暫無交易</td></tr>`;
             document.getElementById('pdf-table-pay').innerHTML = payHtml;
-            
             document.getElementById('pdf-total').textContent = `$${gTotal.toFixed(1)}`;
 
-            // 2. 顯示 loading 提示 (可選)
             const originalBtnText = document.querySelector('.btn-report').innerText;
             document.querySelector('.btn-report').innerText = "處理中...";
 
             try {
-                // 3. 將 HTML 轉為 Canvas 圖片
-                // 暫時將 div 移入視口以確保渲染 (雖然 fixed 在外面通常沒問題，但某些手機瀏覽器需要)
                 source.style.left = "0px";
                 source.style.zIndex = "-1";
-                
-                const canvas = await html2canvas(source, { scale: 2 }); // scale:2 提高清晰度
-                
-                // 復原位置
+                const canvas = await html2canvas(source, { scale: 2 });
                 source.style.left = "-9999px";
 
                 const imgData = canvas.toDataURL('image/png');
-                
-                // 4. 建立 PDF 並貼上圖片
                 const pdf = new jsPDF('p', 'mm', 'a4');
                 const imgProps = pdf.getImageProperties(imgData);
                 const pdfWidth = pdf.internal.pageSize.getWidth();
                 const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-                
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-                
-                // 5. 下載
                 const filename = `Sales_Report_${new Date().toISOString().slice(0,10)}.pdf`;
                 pdf.save(filename);
-                
             } catch (err) {
                 alert("PDF 產生失敗: " + err.message);
                 console.error(err);
